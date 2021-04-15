@@ -9,7 +9,6 @@ import threading
 import traceback
 import socketserver
 import struct
-
 import re
 try:
     from dnslib import *
@@ -41,7 +40,7 @@ def gen_response(qt, qn):
     elif qt == 'A':
         requested_ip = qn[:len(qn)-len(prefix)].strip('.')
         if not re.match(r'^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$', requested_ip):
-            print("Invalid request_ip: " + request_ip)
+            print("Invalid requested_ip: " + requested_ip)
             return None
         generated_a = A(requested_ip)
         return RR(rname=qn, rtype=QTYPE.A, rclass=1, ttl=86400, rdata=generated_a)

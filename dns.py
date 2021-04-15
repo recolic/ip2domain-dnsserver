@@ -9,44 +9,16 @@ import threading
 import traceback
 import socketserver
 import struct
+
+import re
 try:
     from dnslib import *
 except ImportError:
     print("Missing dependency dnslib: <https://pypi.python.org/pypi/dnslib>. Please install it with `pip`.")
     sys.exit(2)
 
-
-class DomainName(str):
-    def __getattr__(self, item):
-        return DomainName(item + '.' + self)
-
 serving_domains = ['example.com.', 'ip4.recolic.net.', 'ip4.recolic.cc.']
 ns_ipaddr = '127.0.0.1'
-
-
-D = DomainName('example.com.')
-IP = '127.0.0.1'
-TTL = 60 * 5
-
-soa_record = SOA(
-    mname=D.ns1,  # primary name server
-    rname=D.andrei,  # email of the domain administrator
-    times=(
-        201307231,  # serial number
-        10000,  # refresh
-        2400,  # retry
-        604800,  # expire
-        3600,  # minimum
-    )
-)
-ns_records = [NS(D.ns1), NS(D.ns2)]
-records = {
-    D: [A(IP), AAAA((0,) * 16), MX(D.mail), soa_record] + ns_records,
-    D.ns1: [A(IP)],  # MX and NS records must never point to a CNAME alias (RFC 2181 section 10.3)
-    D.ns2: [A(IP)],
-    D.mail: [A(IP)],
-    D.andrei: [CNAME(D)],
-}
 
 def gen_response(qt, qn):
     global serving_domains
@@ -55,9 +27,6 @@ def gen_response(qt, qn):
         print("Error: invalid request domain {} in {}".format(qn, serving_domains))
         return None
     prefix = prefix_[0]
-
-    requested_ip = qn[:len(qn)-len(prefix)]
-    # check if requested_ip is valid
 
     if qt == 'SOA':
         generated_soa = SOA(mname="todo."+domain_text, rname="root@recolic.net", times=(
@@ -70,6 +39,10 @@ def gen_response(qt, qn):
         return RR(rname=prefix, rtype=QTYPE.SOA, rclass=1, ttl=86400, rdata=generated_soa)
         # return {"mname": "todo."+domain_text, "rname": "root@recolic.net", "serial": "10", "refresh": 3600, "retry": 600, "expire": 604800, "minimum": 86400}
     elif qt == 'A':
+        requested_ip = qn[:len(qn)-len(prefix)].strip('.')
+        if not re.match(r'^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$', requested_ip):
+            print("Invalid request_ip: " + request_ip)
+            return None
         generated_a = A(requested_ip)
         return RR(rname=qn, rtype=QTYPE.A, rclass=1, ttl=86400, rdata=generated_a)
     elif qt == 'NS':
@@ -93,7 +66,7 @@ def dns_response(data):
     qtype = request.q.qtype
     qt = QTYPE[qtype]
 
-    print("DEBUG: qt={}, qn={}".format(qt, qn))
+    print("DEBUG: GOT REQUEST qt={}, qn={}".format(qt, qn))
     resp = gen_response(qt, qn)
     if resp != None:
         if qt == 'SOA':
@@ -103,23 +76,7 @@ def dns_response(data):
         else:
             reply.add_answer(resp)
 
-
-
-    #if qn == D or qn.endswith('.' + D):
-    #    for name, rrs in records.items():
-    #        if name == qn:
-    #            for rdata in rrs:
-    #                rqt = rdata.__class__.__name__
-    #                if qt in ['*', rqt]:
-    #                    reply.add_answer(RR(rname=qname, rtype=getattr(QTYPE, rqt), rclass=1, ttl=TTL, rdata=rdata))
-
-    #    for rdata in ns_records:
-    #        reply.add_ar(RR(rname=D, rtype=QTYPE.NS, rclass=1, ttl=TTL, rdata=rdata))
-
-    #    reply.add_auth(RR(rname=D, rtype=QTYPE.SOA, rclass=1, ttl=TTL, rdata=soa_record))
-
     print("---- Reply:\n", reply)
-
     return reply.pack()
 
 
@@ -171,7 +128,7 @@ class UDPRequestHandler(BaseRequestHandler):
 def main():
     parser = argparse.ArgumentParser(description='Start a DNS implemented in Python.')
     parser = argparse.ArgumentParser(description='Start a DNS implemented in Python. Usually DNSs use UDP on port 53.')
-    parser.add_argument('--port', default=5053, type=int, help='The port to listen on.')
+    parser.add_argument('--port', default=53, type=int, help='The port to listen on.')
     parser.add_argument('--tcp', action='store_true', help='Listen to TCP connections.')
     parser.add_argument('--udp', action='store_true', help='Listen to UDP datagrams.')
     

@@ -41,7 +41,7 @@ TYPE_LOOKUP = {
 }
 
 import re
-serving_domains = ['example.com.', 'ip4.recolic.net.', 'ip4.recolic.cc.']
+serving_domains = ['ip.rtmp.asia.', 'ip.recolic.net.', 'ip.recolic.cc.']
 ns_ipaddr = '127.0.0.1'
 
 def gen_response(qt, qn):

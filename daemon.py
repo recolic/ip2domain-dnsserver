@@ -1,4 +1,4 @@
-#!/usr/bin/env python3.6
+#!/usr/bin/python3
 import json
 import logging
 import os
@@ -48,9 +48,10 @@ def gen_response(qt, qn):
     global serving_domains
     prefix_ = list(filter(lambda d: qn == d or qn.endswith('.'+d), serving_domains))
     if len(prefix_) != 1:
-        print("Error: invalid request domain {} in {}".format(qn, serving_domains))
+        # print("Error: invalid request domain {} in {}".format(qn, serving_domains))
         return None
     prefix = prefix_[0]
+    print('REQ: ', qt, qn)
 
     if qt == 'SOA':
         generated_soa = dnslib.SOA(mname="todo."+domain_text, rname="root@recolic.net", times=(
@@ -121,8 +122,7 @@ class Resolver(ProxyResolver):
 
     def resolve(self, request, handler):
         qt = QTYPE[request.q.qtype]
-        qn = str(request.q.qname)
-        print(qt, qn)
+        qn = str(request.q.qname).lower()
         reply = request.reply()
 
         resp = gen_response(qt, qn)
@@ -134,13 +134,13 @@ class Resolver(ProxyResolver):
             else:
                 reply.add_answer(resp)
 
-
-        if reply.rr:
-            logger.info('found zone for %s[%s], %d replies', qn, qt, len(reply.rr))
+        if reply.rr or qt == 'CAA':
+            # CAA query should return empty reply. It's ok. 
             return reply
 
-        logger.info('no local zone found, proxying %s[%s]', qn, qt)
-        return super().resolve(request, handler)
+        # I don't want to support other records. Disable the fallback resolver and return empty. 
+        # return super().resolve(request, handler)
+        return reply
 
 
 def handle_sig(signum, frame):
@@ -166,3 +166,5 @@ if __name__ == '__main__':
             sleep(1)
     except KeyboardInterrupt:
         pass
+
+

@@ -41,38 +41,47 @@ TYPE_LOOKUP = {
 }
 
 import re
-serving_domains = ['ip.rtmp.asia.', 'ip.recolic.net.', 'ip.recolic.cc.']
+base_domains = ['ip.rtmp.asia.', 'ip.recolic.net.', 'ip.recolic.cc.']
 ns_ipaddr = '127.0.0.1'
 
-def gen_response(qt, qn):
-    global serving_domains
-    prefix_ = list(filter(lambda d: qn == d or qn.endswith('.'+d), serving_domains))
-    if len(prefix_) != 1:
-        # print("Error: invalid request domain {} in {}".format(qn, serving_domains))
+def parse_requested_ip(qn_without_basedomain):
+    # This function receives qn without base domain, validate and parse it. Returns a good IPV4 or ipv6 address. 
+    if re.match(r'^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$', qn_without_basedomain):
+        # 1.1.1.1.ip.recolic.cc
+        return qn_without_basedomain
+    elif re.match(r'^(?:[0-9]{1,3}-){3}[0-9]{1,3}$', qn_without_basedomain):
+        # 1-1-1-1.ip.recolic.cc
+        return qn_without_basedomain.replace('-','.')
+    else:
+        print("Invalid request ip format: " + qn_without_basedomain)
         return None
-    prefix = prefix_[0]
+
+def gen_response(qt, qn):
+    global base_domains
+    matched_base_domains = list(filter(lambda d: qn == d or qn.endswith('.'+d), base_domains))
+    if len(matched_base_domains) != 1:
+        print("Error: invalid request domain {} in {}".format(qn, base_domains))
+        return None
+    base_domain = matched_base_domains[0]
     print('REQ: ', qt, qn)
 
     if qt == 'SOA':
-        generated_soa = dnslib.SOA(mname="todo."+domain_text, rname="root@recolic.net", times=(
+        generated_soa = dnslib.SOA(mname="todo."+base_domain, rname="root@recolic.net", times=(
             201307231,  # serial number
             10000,  # refresh
             2400,  # retry
             604800,  # expire
             3600,  # minimum
         ))
-        return RR(rname=prefix, rtype=QTYPE.SOA, rclass=1, ttl=86400, rdata=generated_soa)
-        # return {"mname": "todo."+domain_text, "rname": "root@recolic.net", "serial": "10", "refresh": 3600, "retry": 600, "expire": 604800, "minimum": 86400}
+        return RR(rname=base_domain, rtype=QTYPE.SOA, rclass=1, ttl=86400, rdata=generated_soa)
+        # return {"mname": "todo."+base_domain, "rname": "root@recolic.net", "serial": "10", "refresh": 3600, "retry": 600, "expire": 604800, "minimum": 86400}
     elif qt == 'A':
-        requested_ip = qn[:len(qn)-len(prefix)].strip('.')
-        if not re.match(r'^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$', requested_ip):
-            print("Invalid requested_ip: " + requested_ip)
-            return None
+        requested_ip = parse_requested_ip(qn[:len(qn)-len(base_domain)].strip('.'))
         generated_a = dnslib.A(requested_ip)
         return RR(rname=qn, rtype=QTYPE.A, rclass=1, ttl=86400, rdata=generated_a)
     elif qt == 'NS':
         generated_ns = dnslib.NS(ns_ipaddr)
-        return RR(rname=prefix, rtype=QTYPE.NS, rclass=1, ttl=86400, rdata=generated_ns)
+        return RR(rname=base_domain, rtype=QTYPE.NS, rclass=1, ttl=86400, rdata=generated_ns)
     else:
         print("Invalid qt=" + qt)
         return None
@@ -125,22 +134,28 @@ class Resolver(ProxyResolver):
         qn = str(request.q.qname).lower()
         reply = request.reply()
 
-        resp = gen_response(qt, qn)
-        if resp != None:
-            if qt == 'SOA':
-                reply.add_auth(resp)
-            elif qt == 'NS':
-                reply.add_ar(resp)
-            else:
-                reply.add_answer(resp)
-
-        if reply.rr or qt == 'CAA':
-            # CAA query should return empty reply. It's ok. 
+        if qt == 'CAA':
+            # CAA query should return empty response. It's ok. 
             return reply
 
-        # I don't want to support other records. Disable the fallback resolver and return empty. 
-        # return super().resolve(request, handler)
-        return reply
+        try:
+            resp = gen_response(qt, qn)
+            if resp != None:
+                if qt == 'SOA':
+                    reply.add_auth(resp)
+                elif qt == 'NS':
+                    reply.add_ar(resp)
+                else:
+                    reply.add_answer(resp)
+        except:
+            pass
+
+        if reply.rr:
+            return reply
+        else:
+            # I don't want to support other records. Disable the fallback resolver and return empty. 
+            # return super().resolve(request, handler)
+            return reply
 
 
 def handle_sig(signum, frame):

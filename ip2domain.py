@@ -41,7 +41,7 @@ TYPE_LOOKUP = {
     'SPF': (dns.TXT, QTYPE.TXT),
 }
 
-base_domains = ['ip.rtmp.asia.', 'ip.recolic.net.', 'ip.recolic.cc.']
+base_domains = ['ip.res.tools.', 'ip.recolic.net.', 'ip.recolic.cc.']
 ns_ipaddr = '127.0.0.1'
 
 def parse_requested_ip(qn_without_basedomain, ip_version):

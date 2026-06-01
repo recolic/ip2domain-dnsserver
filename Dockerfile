@@ -1,5 +1,5 @@
 # sudo docker build -t recolic/ip2domain .
-# sudo docker run --log-opt max-size=10M -d -p 53:53/tcp -p 53:53/udp --name rip2d recolic/ip2domain
+# sudo docker run -d --restart always --log-opt max-size=10M -m 60m -p 53:53/tcp -p 53:53/udp --name rip2d recolic/ip2domain
 FROM python:3-alpine
 WORKDIR /app
 RUN pip install --no-cache-dir dnslib

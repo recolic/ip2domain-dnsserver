@@ -1,4 +1,5 @@
 #!/usr/bin/python3
+import ipaddress
 import json
 import logging
 import os
@@ -40,21 +41,25 @@ TYPE_LOOKUP = {
     'SPF': (dns.TXT, QTYPE.TXT),
 }
 
-import re
 base_domains = ['ip.rtmp.asia.', 'ip.recolic.net.', 'ip.recolic.cc.']
 ns_ipaddr = '127.0.0.1'
 
-def parse_requested_ip(qn_without_basedomain):
-    # This function receives qn without base domain, validate and parse it. Returns a good IPV4 or ipv6 address. 
-    if re.match(r'^(?:[0-9]{1,3}\.){3}[0-9]{1,3}$', qn_without_basedomain):
-        # 1.1.1.1.ip.recolic.cc
-        return qn_without_basedomain
-    elif re.match(r'^(?:[0-9]{1,3}-){3}[0-9]{1,3}$', qn_without_basedomain):
-        # 1-1-1-1.ip.recolic.cc
-        return qn_without_basedomain.replace('-','.')
+def parse_requested_ip(qn_without_basedomain, ip_version):
+    # Input: 1.1.1.1 or 1-1-1-1 or 1_1_1_1 for IPv4, and 2001:db8::1 can be represented as 2001-db8--1 or 2001_db8__1
+    if ip_version == 4:
+        requested_ip = qn_without_basedomain.replace('-','.').replace('_','.')
     else:
-        print("Invalid request ip format: " + qn_without_basedomain)
-        return None
+        requested_ip = qn_without_basedomain.replace('-',':').replace('_',':')
+
+    try:
+        requested_ip = ipaddress.ip_address(requested_ip)
+        if requested_ip.version == ip_version:
+            return str(requested_ip)
+    except:
+        pass
+
+    print("Invalid request ip format: " + qn_without_basedomain)
+    return None
 
 def gen_response(qt, qn):
     global base_domains
@@ -76,9 +81,13 @@ def gen_response(qt, qn):
         return RR(rname=base_domain, rtype=QTYPE.SOA, rclass=1, ttl=86400, rdata=generated_soa)
         # return {"mname": "todo."+base_domain, "rname": "root@recolic.net", "serial": "10", "refresh": 3600, "retry": 600, "expire": 604800, "minimum": 86400}
     elif qt == 'A':
-        requested_ip = parse_requested_ip(qn[:len(qn)-len(base_domain)].strip('.'))
+        requested_ip = parse_requested_ip(qn[:len(qn)-len(base_domain)].strip('.'), 4)
         generated_a = dnslib.A(requested_ip)
         return RR(rname=qn, rtype=QTYPE.A, rclass=1, ttl=86400, rdata=generated_a)
+    elif qt == 'AAAA':
+        requested_ip = parse_requested_ip(qn[:len(qn)-len(base_domain)].strip('.'), 6)
+        generated_aaaa = dnslib.AAAA(requested_ip)
+        return RR(rname=qn, rtype=QTYPE.AAAA, rclass=1, ttl=86400, rdata=generated_aaaa)
     elif qt == 'NS':
         generated_ns = dnslib.NS(ns_ipaddr)
         return RR(rname=base_domain, rtype=QTYPE.NS, rclass=1, ttl=86400, rdata=generated_ns)
